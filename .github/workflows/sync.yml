@@ -20,12 +20,12 @@ jobs:
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@://github.com"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Fetch and Merge Upstream
         run: |
-          # 1. Safely add massgravel using token authenticated format
-          git remote add upstream "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com"
+          # 1. Add the FULL massgravel repository URL here:
+          git remote add upstream https://github.com/massgravel/Microsoft-Activation-Scripts.git
           git fetch upstream
 
           # 2. Grab the absolute newest README file directly from massgravel's master branch

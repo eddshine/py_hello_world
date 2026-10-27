@@ -1,9 +1,9 @@
-name: Sync Fork (Keep Local README)
+name: Sync Fork (Rename Upstream README)
 
 on:
   schedule:
     - cron: '0 0 * * *' # Runs daily at midnight UTC
-  workflow_dispatch: # Allows you to trigger it manually anytime
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   sync:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout Fork
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches history so git can merge properly
+          fetch-depth: 0
 
       - name: Configure Git
         run: |
@@ -28,15 +28,21 @@ jobs:
           git remote add upstream https://github.com
           git fetch upstream
 
-          # 2. Merge upstream master changes into your branch without committing yet
+          # 2. Grab the absolute newest README file directly from massgravel's master branch
+          git show upstream/master:README.md > Original_Updated_Readme.md
+
+          # 3. Merge the rest of the upstream master changes without committing yet
           git merge upstream/master --no-commit --no-ff || true
 
-          # 3. Force restore your fork's original README.md file
+          # 4. Ensure YOUR original README.md stays exactly as it was
           git checkout HEAD -- README.md
 
-          # 4. Finalize the commit and push changes
+          # 5. Stage the newly renamed file
+          git add Original_Updated_Readme.md
+
+          # 6. Finalize commit and push back to your master branch
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Auto-sync from massgravel (excluding README.md)"
+            git commit -m "Auto-sync from massgravel (Saved upstream README as Original_Updated_Readme.md)"
             git push origin master
           else
             echo "No new changes to sync."

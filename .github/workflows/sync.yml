@@ -24,8 +24,8 @@ jobs:
 
       - name: Fetch and Merge Upstream
         run: |
-          # 1. Add massgravel as the upstream remote
-          git remote add upstream https://github.com
+          # 1. Safely add massgravel using token authenticated format
+          git remote add upstream "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com"
           git fetch upstream
 
           # 2. Grab the absolute newest README file directly from massgravel's master branch

@@ -1,0 +1,103 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>WinAct</AssemblyName>
+    <RootNamespace>MasLauncher</RootNamespace>
+    <ApplicationIcon>..\..\icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Version>1.0.7</Version>
+    <Product>WinAct</Product>
+    <AssemblyTitle>WinAct</AssemblyTitle>
+    <Company>local</Company>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\icon.ico"
+                      LogicalName="WinAct.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\MAS\All-In-One-Version-KL\MAS_AIO.cmd"
+                      LogicalName="WinAct.cmd" />
+  </ItemGroup>
+
+  <!--
+    Release builds are obfuscated with Obfuscar (settings in tools\obfuscar.xml). The pristine
+    assembly in obj\ is obfuscated into obj\...\obfuscated\ and copied over the build output,
+    so repeated builds never obfuscate an already-obfuscated file. Needs the pinned local tool:
+
+        dotnet tool restore
+
+    Pass -p:Obfuscate=false for a readable assembly, which is what you want when debugging.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Obfuscate Condition="'$(Obfuscate)' == ''">true</Obfuscate>
+  </PropertyGroup>
+
+  <!-- Obfuscation replaces the compiled assembly with its renamed twin, which cannot be undone.
+       Folding the setting into the compiler arguments means switching Obfuscate on or off always
+       recompiles, so the input is always a readable assembly. -->
+  <PropertyGroup>
+    <DefineConstants Condition="'$(Obfuscate)' != 'true'">$(DefineConstants);WINACT_READABLE</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    Runs straight after compilation, before the assembly is copied to bin\ or bundled into
+    the single-file EXE. Obfuscar reads the compiled assembly and writes its renamed copy to
+    obj\...\obfuscated\; that copy replaces the compiled one, so both the build output and the
+    published EXE carry only obfuscated code. When the two files are already identical the
+    build was incremental and there is nothing left to do.
+  -->
+  <Target Name="ObfuscateAssembly" AfterTargets="CoreCompile"
+          Condition="'$(Obfuscate)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <ObfuscatorDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(IntermediateOutputPath)'))</ObfuscatorDir>
+      <ObfuscatorConfig>$(MSBuildProjectDirectory)\..\..\tools\obfuscar.xml</ObfuscatorConfig>
+      <ObfuscatedAssembly>$(ObfuscatorDir)\obfuscated\$(AssemblyName).dll</ObfuscatedAssembly>
+    </PropertyGroup>
+
+    <GetFileHash Files="$(ObfuscatorDir)\$(AssemblyName).dll" Algorithm="SHA256">
+      <Output TaskParameter="Hash" PropertyName="CompiledHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(ObfuscatedAssembly)" Algorithm="SHA256" Condition="Exists('$(ObfuscatedAssembly)')">
+      <Output TaskParameter="Hash" PropertyName="ObfuscatedHash" />
+    </GetFileHash>
+
+    <Error Condition="!Exists('$(ObfuscatorConfig)')" Text="Obfuscar settings not found: $(ObfuscatorConfig)" />
+
+    <Exec Command="dotnet obfuscar.console &quot;$(ObfuscatorConfig)&quot;"
+          WorkingDirectory="$(ObfuscatorDir)"
+          Condition="'$(CompiledHash)' != '$(ObfuscatedHash)'" />
+    <Copy SourceFiles="$(ObfuscatedAssembly)"
+          DestinationFiles="$(ObfuscatorDir)\$(AssemblyName).dll"
+          Condition="'$(CompiledHash)' != '$(ObfuscatedHash)'" />
+  </Target>
+
+  <!-- The published build is named with its version: "WinAct 1.0.7.exe". -->
+  <Target Name="VersionThePublishedExe" AfterTargets="Publish">
+    <PropertyGroup>
+      <VersionedExe>$(PublishDir)$(AssemblyName) $(Version).exe</VersionedExe>
+    </PropertyGroup>
+    <Delete Files="$(VersionedExe)" Condition="Exists('$(VersionedExe)')" />
+    <Move SourceFiles="$(PublishDir)$(AssemblyName).exe"
+          DestinationFiles="$(VersionedExe)"
+          Condition="Exists('$(PublishDir)$(AssemblyName).exe')" />
+  </Target>
+
+</Project>

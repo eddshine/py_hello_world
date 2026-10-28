@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+dist/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+
+# Local diagnostic output
+_*.txt
+_*.png
+
+# Repository payload archives: unpacked into the clone, never committed
+*.zip

@@ -1,0 +1,36 @@
+<?xml version='1.0'?>
+<!--
+  Obfuscar settings for WinAct (MIT licensed, https://github.com/obfuscar/obfuscar).
+
+  The build runs this with the working directory set to the intermediate output folder,
+  which is why InPath/OutPath are relative:
+
+      dotnet obfuscar.console tools\obfuscar.xml        (run inside obj\Release\...\)
+
+  The pristine compiled assembly is read from there and the renamed copy is written to
+  obfuscated\, so the source assembly is never modified and repeated builds cannot
+  obfuscate an already-obfuscated file. The build copies the result over bin\.
+
+  Mapping.txt in the output folder holds the original names. It is useful for reading a
+  stack trace and must never be shipped with a release.
+-->
+<Obfuscator>
+  <Var name="InPath" value="." />
+  <Var name="OutPath" value="obfuscated" />
+
+  <!-- Every type in this app is internal, so hiding the public surface costs nothing. -->
+  <Var name="KeepPublicApi" value="false" />
+  <Var name="HidePrivateApi" value="true" />
+
+  <!-- Renames members as well as types, and turns string literals into lookups. -->
+  <Var name="RenameProperties" value="true" />
+  <Var name="RenameEvents" value="true" />
+  <Var name="RenameFields" value="true" />
+  <Var name="HideStrings" value="true" />
+
+  <!-- No PDB is produced; regenerating debug info would only help a reader. -->
+  <Var name="RegenerateDebugInfo" value="false" />
+  <Var name="SuppressIldasm" value="true" />
+
+  <Module file="WinAct.dll" />
+</Obfuscator>

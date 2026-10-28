@@ -1,0 +1,148 @@
+# release.yml triggers on this workflow's name. Keep the two in step.
+name: Sync Fork (Rename Upstream README)
+
+on:
+  schedule:
+    - cron: '0 0 * * 1' # Runs weekly, Monday at midnight UTC
+  workflow_dispatch: # Allows manual trigger
+
+concurrency:
+  group: sync-fork
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # The version marker is the only gate. A README tweak or a tools change upstream does not
+      # produce a new build; a new `@set masver=` line does.
+      - name: Compare the engine version
+        id: version
+        run: |
+          set -eu
+
+          upstream_file="MAS/All-In-One-Version-KL/MAS_AIO.cmd"
+          git remote add upstream https://github.com/massgravel/Microsoft-Activation-Scripts.git
+          git fetch upstream
+
+          version_of() {
+            { grep -m1 -iE '^[[:space:]@]*set[[:space:]]+"?masver[[:space:]]*=' || true; } \
+              | sed -E 's/.*=[[:space:]]*[vV]?([0-9][0-9.]*).*/\1/' \
+              | sed -E 's/\.+$//'
+          }
+
+          upstream_version="$(git show "upstream/master:${upstream_file}" | version_of)"
+          local_version=""
+          if [ -f "$upstream_file" ]; then
+            local_version="$(version_of < "$upstream_file")"
+          fi
+
+          echo "local engine:    ${local_version:-<missing>}"
+          echo "upstream engine: ${upstream_version:-<missing>}"
+
+          if [ -z "$upstream_version" ]; then
+            echo "::error::Could not read set masver= from upstream."
+            exit 1
+          fi
+
+          newer=false
+          if [ -z "$local_version" ]; then
+            newer=true
+          elif [ "$upstream_version" != "$local_version" ]; then
+            highest="$(printf '%s\n%s\n' "$local_version" "$upstream_version" | sort -V | tail -n 1)"
+            if [ "$highest" = "$upstream_version" ]; then
+              newer=true
+            else
+              echo "Local engine ${local_version} is newer than upstream ${upstream_version}; not downgrading."
+            fi
+          fi
+
+          echo "newer=$newer" >> "$GITHUB_OUTPUT"
+          echo "local=$local_version" >> "$GITHUB_OUTPUT"
+          echo "upstream=$upstream_version" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream when the engine changed
+        if: steps.version.outputs.newer == 'true'
+        run: |
+          set -eu
+
+          # Keep the fork's own README and archive upstream's alongside it.
+          git show upstream/master:README.md > Original_Updated_Readme.md
+
+          # Merge everything else without committing yet.
+          git merge upstream/master --no-commit --no-ff || true
+
+          if ! git rev-parse -q --verify MERGE_HEAD > /dev/null; then
+            echo "::error::The upstream merge did not start; check the output above."
+            exit 1
+          fi
+
+          # Ensure YOUR original README.md stays exactly as it was. Doing this before the
+          # conflict check also resolves the expected README conflict.
+          git checkout HEAD -- README.md
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "::error::Upstream merge has conflicts outside README.md; resolve them by hand."
+            git diff --name-only --diff-filter=U
+            git merge --abort || true
+            exit 1
+          fi
+
+          # A newer engine needs a new app build, and the app keeps its own version. Bump the
+          # patch here so the repo records the number that release.yml will publish. A tag that
+          # is already out (an earlier launcher-only release) is skipped.
+          csproj="src/MasLauncher/MasLauncher.csproj"
+          current="$(sed -n 's|.*<Version>\([^<]*\)</Version>.*|\1|p' "$csproj" | head -n 1)"
+          IFS=. read -r major minor patch <<< "$current"
+          patch="${patch:-0}"
+
+          if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ && "$patch" =~ ^[0-9]+$ ]]; then
+            echo "::error::App version '$current' in $csproj is not major.minor.patch"
+            git merge --abort || true
+            exit 1
+          fi
+
+          git fetch --tags --force origin
+
+          # Never publish a tag below one that is already out. A hand-published build (e.g. 1.0.9
+          # while the csproj still says 1.0.7) would otherwise be followed by 1.0.8, and installed
+          # copies would treat the older number as the newer release.
+          published="$(git tag -l "v${major}.${minor}.*" \
+            | sed -E "s|^v${major}\.${minor}\.||" \
+            | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
+          if [ -n "${published:-}" ] && [ "$published" -gt "$patch" ]; then
+            echo "Published tag v${major}.${minor}.${published} is ahead of the csproj; starting after it."
+            patch="$published"
+          fi
+
+          patch=$((patch + 1))
+          next="${major}.${minor}.${patch}"
+          while git rev-parse -q --verify "refs/tags/v${next}" > /dev/null; do
+            patch=$((patch + 1))
+            next="${major}.${minor}.${patch}"
+          done
+
+          sed -i -E "s|<Version>[^<]+</Version>|<Version>${next}</Version>|" "$csproj"
+          echo "App version ${current} -> ${next}"
+
+          git add Original_Updated_Readme.md "$csproj"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "Sync MAS ${{ steps.version.outputs.local }} -> ${{ steps.version.outputs.upstream }} (app ${current} -> ${next})"
+            git push origin HEAD
+          else
+            echo "No file changes to sync."
+          fi

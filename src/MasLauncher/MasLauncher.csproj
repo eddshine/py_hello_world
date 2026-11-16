@@ -16,7 +16,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <Product>WinAct</Product>
     <AssemblyTitle>WinAct</AssemblyTitle>
     <Company>local</Company>
